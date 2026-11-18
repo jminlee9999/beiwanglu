@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="拾光备忘">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="24" x2="448" y2="496" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8EC6F5"/>
+      <stop offset=".48" stop-color="#EFA9A5"/>
+      <stop offset="1" stop-color="#E88D9B"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="168" y1="122" x2="340" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFF9F6"/>
+    </linearGradient>
+    <linearGradient id="line" x1="184" y1="188" x2="350" y2="196" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F3AD58"/>
+      <stop offset="1" stop-color="#EA987F"/>
+    </linearGradient>
+    <filter id="shadow" x="73" y="59" width="378" height="414" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="20" flood-color="#5D4C61" flood-opacity=".2"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="442" cy="78" r="116" fill="#FFFFFF" opacity=".11"/>
+  <circle cx="57" cy="456" r="142" fill="#FFFFFF" opacity=".09"/>
+  <circle cx="420" cy="412" r="58" fill="none" stroke="#FFFFFF" stroke-width="18" opacity=".08"/>
+
+  <g filter="url(#shadow)" transform="rotate(-5 256 256)">
+    <rect x="137" y="101" width="238" height="310" rx="54" fill="url(#paper)"/>
+    <rect x="177" y="173" width="158" height="23" rx="11.5" fill="url(#line)"/>
+    <rect x="177" y="229" width="112" height="18" rx="9" fill="#D9DEE7"/>
+    <rect x="177" y="277" width="142" height="18" rx="9" fill="#D9DEE7"/>
+    <rect x="177" y="325" width="88" height="18" rx="9" fill="#E3E7ED"/>
+    <path d="M322 369.5c-2.2-2.4-23-18.7-23-34 0-10.8 8.3-18.6 17.9-18.6 6.1 0 11.4 3.1 14.3 7.7 2.9-4.6 8.2-7.7 14.3-7.7 9.6 0 17.9 7.8 17.9 18.6 0 15.3-20.8 31.6-23 34a3.6 3.6 0 0 1-5.4 0Z" fill="#EE9BA7"/>
+  </g>
+
+  <path d="M395 160l6.5 18.5L420 185l-18.5 6.5L395 210l-6.5-18.5L370 185l18.5-6.5L395 160Z" fill="#FFFFFF" opacity=".9"/>
+  <path d="M106 150l4.5 12.7L123 167l-12.5 4.3L106 184l-4.5-12.7L89 167l12.5-4.3L106 150Z" fill="#FFFFFF" opacity=".65"/>
+</svg>
