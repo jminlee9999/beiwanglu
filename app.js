@@ -13,7 +13,7 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.2.1";
+  const APP_VERSION = "1.4.0";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -21,6 +21,9 @@
   const MAX_MEDIA_DATA_URL = 40_000_000;
   const DATA_VERSION = 2;
   const BACKUP_FILENAME = "shiguang-backup.json";
+  const BACKUP_BASENAME = "shiguang-backup";
+  const CAPACITY_WARNING_BYTES = 80 * 1024 * 1024;
+  const CAPACITY_SUGGESTED_BYTES = 100 * 1024 * 1024;
   const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
   const ROUTES = ["home", "plan", "done", "daily", "favorites"];
 
@@ -551,6 +554,83 @@
     return appState.plans.length + appState.daily.length + appState.favorites.length;
   }
 
+  function analyzeLocalData() {
+    let bytes = 512;
+    let images = 0;
+    let videos = 0;
+    let mediaCount = 0;
+
+    const addText = (value) => {
+      if (typeof value === "string" && value) bytes += value.length * 2;
+    };
+    const addMedia = (media) => {
+      if (!Array.isArray(media)) return;
+      media.forEach((item) => {
+        mediaCount += 1;
+        if (item.type === "video") videos += 1;
+        else images += 1;
+        bytes += 160;
+        if (typeof item.src === "string") bytes += item.src.length;
+        if (typeof item.poster === "string") bytes += item.poster.length;
+      });
+    };
+
+    appState.plans.forEach((plan) => {
+      bytes += 260;
+      addText(plan.title);
+      addText(plan.notes);
+      addText(plan.dueDate);
+      addText(plan.dueTime);
+      addMedia(plan.media);
+    });
+    appState.daily.forEach((entry) => {
+      bytes += 240;
+      addText(entry.text);
+      addText(entry.date);
+      addMedia(entry.media);
+    });
+    appState.favorites.forEach((item) => {
+      bytes += 260;
+      addText(item.title);
+      addText(item.notes);
+      addText(item.link);
+      addMedia(item.media);
+    });
+
+    return { bytes, images, videos, mediaCount };
+  }
+
+  function getCapacityInfo(bytes) {
+    const percent = Math.min(
+      100,
+      Math.max(0, Math.round((bytes / CAPACITY_SUGGESTED_BYTES) * 100))
+    );
+    if (bytes >= CAPACITY_SUGGESTED_BYTES) {
+      return {
+        tone: "danger",
+        label: "建议清理",
+        percent,
+        message:
+          "本地数据已超过建议容量，继续添加大视频可能影响保存、导出和导入速度。建议先导出备份，再清理不需要的附件。",
+      };
+    }
+    if (bytes >= CAPACITY_WARNING_BYTES) {
+      return {
+        tone: "warn",
+        label: "接近上限",
+        percent,
+        message:
+          "附件已经较多。建议导出备份，并清理不再需要的图片或视频，避免影响手机上的使用体验。",
+      };
+    }
+    return {
+      tone: "ok",
+      label: "空间充足",
+      percent,
+      message: "把重要内容定期导出备份，可以更安心地使用本地存储。",
+    };
+  }
+
   /* ---------------- Storage ---------------- */
 
   function openDatabase() {
@@ -655,22 +735,19 @@
     return writeQueue;
   }
 
-  async function storageUsageText() {
+  async function browserCapacityText() {
     try {
       if (navigator.storage && typeof navigator.storage.estimate === "function") {
         const estimate = await navigator.storage.estimate();
-        if (estimate.usage) {
-          return `本机已用约 ${formatBytes(estimate.usage)}`;
+        if (estimate.quota && Number.isFinite(estimate.usage)) {
+          const available = Math.max(0, estimate.quota - estimate.usage);
+          return `浏览器可用空间约 ${formatBytes(available)}`;
         }
       }
     } catch {
       /* noop */
     }
-    try {
-      return `数据约 ${formatBytes(new Blob([JSON.stringify(appState)]).size)}`;
-    } catch {
-      return "本地保存";
-    }
+    return "浏览器未提供可用空间信息";
   }
 
   /* ---------------- Formatting helpers ---------------- */
@@ -831,6 +908,24 @@
     const dailyCount = appState.daily.length;
     const favoriteCount = appState.favorites.length;
     const allCount = totalRecordCount();
+    const capacityData = analyzeLocalData();
+    const capacity = getCapacityInfo(capacityData.bytes);
+    const capacitySize = formatBytes(capacityData.bytes);
+    const capacityAlert =
+      capacity.tone === "ok"
+        ? ""
+        : `<button class="capacity-alert tone-${capacity.tone}" type="button" data-action="open-data">
+            ${icon("alert")}
+            <span class="capacity-alert-copy">
+              <strong>本地数据已用约 ${capacitySize}</strong>
+              <span>${
+                capacity.tone === "danger"
+                  ? "超过建议容量，建议立即导出备份并清理附件"
+                  : "已接近建议容量，建议备份并清理附件"
+              }</span>
+            </span>
+            <span class="capacity-alert-action">查看</span>
+          </button>`;
 
     const tiles = `
       <div class="stat-grid">
@@ -884,9 +979,13 @@
               "search"
             )}</button>
             <span class="tool-divider" aria-hidden="true"></span>
-            <button class="icon-button" type="button" data-action="open-data" aria-label="数据与备份">${icon(
-              "database"
-            )}</button>
+            <button class="icon-button" type="button" data-action="open-data" aria-label="${
+              capacity.tone === "ok" ? "数据与备份" : "数据与备份，本地容量需要关注"
+            }">${icon("database")}${
+              capacity.tone === "ok"
+                ? ""
+                : `<span class="capacity-dot tone-${capacity.tone}" aria-hidden="true"></span>`
+            }</button>
           </div>
         </div>
         <div class="home-intro">
@@ -916,7 +1015,8 @@
         ${renderRecent()}
       </section>
 
-      <p class="privacy-note">${icon("lock")}数据只保存在这台设备，记得定期备份</p>
+      ${capacityAlert}
+      <p class="privacy-note">${icon("lock")}数据只保存在这台设备 · 约 ${capacitySize}，记得定期备份</p>
     </div>`;
   }
 
@@ -2892,6 +2992,9 @@
 
   function openDataSheet() {
     const doneCount = appState.plans.filter((item) => item.completed).length;
+    const capacityData = analyzeLocalData();
+    const capacity = getCapacityInfo(capacityData.bytes);
+    const capacitySize = formatBytes(capacityData.bytes);
     const content = `<div class="sheet-body">
       <div class="privacy-card">
         <span class="privacy-card-icon" aria-hidden="true">${icon("lock")}</span>
@@ -2905,11 +3008,27 @@
         <div class="data-stat"><strong>${appState.daily.length}</strong><span>日常</span></div>
         <div class="data-stat"><strong>${appState.favorites.length}</strong><span>收藏</span></div>
       </div>
+      <div class="capacity-card tone-${capacity.tone}">
+        <div class="capacity-head">
+          <div class="capacity-value">
+            <span>本地数据占用</span>
+            <strong>约 ${capacitySize}</strong>
+          </div>
+          <span class="capacity-badge">${capacity.label}</span>
+        </div>
+        <div class="capacity-track" aria-hidden="true"><span style="width:${capacity.percent}%"></span></div>
+        <div class="capacity-meta">
+          <span>建议控制在 ${formatBytes(CAPACITY_SUGGESTED_BYTES)} 内</span>
+          <span>${capacityData.images} 张图片 · ${capacityData.videos} 段视频</span>
+        </div>
+        <p class="capacity-message">${capacity.message}</p>
+        <p class="capacity-browser" id="browser-capacity">正在读取浏览器可用空间…</p>
+      </div>
       <p class="data-section-label">备份与迁移</p>
       <div class="data-actions">
         <button class="data-action" type="button" id="export-data">
           <span class="data-action-icon" aria-hidden="true">${icon("download")}</span>
-          <span class="data-action-copy"><strong>导出备份</strong><span>固定文件名 · 可存到「文件」或「备忘录」</span></span>
+          <span class="data-action-copy"><strong>导出备份</strong><span>默认同名 · 导出前可重命名</span></span>
           ${icon("chevronRight", "recent-arrow")}
         </button>
         <button class="data-action" type="button" id="import-data">
@@ -2923,7 +3042,7 @@
           ${icon("chevronRight", "recent-arrow")}
         </button>
       </div>
-      <p class="data-tip">导出时会打开系统保存面板，可以选择「存储到文件」或「备忘录」。文件名固定为 <strong>${BACKUP_FILENAME}</strong>，再次导出时请覆盖旧文件。</p>
+      <p class="data-tip">导出时会打开系统保存面板，可以选择「存储到文件」或「备忘录」。默认文件名是 <strong>${BACKUP_FILENAME}</strong>，导出前可以改成其他名字；再次使用同名文件时请覆盖或另存。</p>
       <div class="export-status" id="export-status" role="status" aria-live="polite" hidden></div>
       <p class="data-section-label">管理</p>
       <div class="data-actions">
@@ -2933,7 +3052,7 @@
           ${icon("chevronRight", "recent-arrow")}
         </button>
       </div>
-      <p class="version-line">拾光备忘 v${APP_VERSION} · 本地优先<br><span id="storage-usage">正在读取本机存储…</span></p>
+      <p class="version-line">拾光备忘 v${APP_VERSION} · 本地优先</p>
       <input class="hidden" id="import-file-input" type="file" accept=".json,application/json">
     </div>`;
 
@@ -2944,15 +3063,17 @@
       content,
     });
 
-    const usage = sheet.sheet.querySelector("#storage-usage");
-    storageUsageText().then((text) => {
-      if (usage && usage.isConnected) usage.textContent = text;
+    const browserCapacity = sheet.sheet.querySelector("#browser-capacity");
+    browserCapacityText().then((text) => {
+      if (browserCapacity && browserCapacity.isConnected) browserCapacity.textContent = text;
     });
 
     sheet.sheet
       .querySelector("#install-app")
       .addEventListener("click", () => handleInstall());
-    sheet.sheet.querySelector("#export-data").addEventListener("click", () => exportBackup());
+    sheet.sheet
+      .querySelector("#export-data")
+      .addEventListener("click", () => openExportBackupDialog());
     sheet.sheet
       .querySelector("#clear-data")
       .addEventListener("click", async () => {
@@ -3060,18 +3181,102 @@
     status.hidden = false;
   }
 
-  function downloadBackup(blob) {
+  function downloadBackup(blob, fileName) {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = BACKUP_FILENAME;
+    anchor.download = fileName;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  async function exportBackup() {
+  function normalizeBackupBaseName(value) {
+    let name = String(value || "")
+      .trim()
+      .replace(/\.json$/i, "")
+      .trim();
+    name = name.replace(/[\/:*?"<>|\u0000-\u001F]/g, "-");
+    name = name.replace(/\s+/g, " ").trim();
+    name = name.replace(/^\.+/, "").replace(/[.\s]+$/g, "");
+    return name.slice(0, 60).trim();
+  }
+
+  function openExportBackupDialog() {
+    const layer = document.createElement("div");
+    layer.className = "confirm-layer export-name-layer";
+    layer.dataset.tone = "blue";
+    layer.innerHTML = `
+      <button class="confirm-backdrop" type="button" data-export-cancel aria-label="取消导出"></button>
+      <div class="confirm-card export-name-card" role="dialog" aria-modal="true" aria-labelledby="export-name-title">
+        <div class="confirm-icon" aria-hidden="true">${icon("download")}</div>
+        <h2 class="confirm-title" id="export-name-title">导出备份</h2>
+        <p class="confirm-text">默认使用同一个文件名，也可以改个名字再保存。</p>
+        <form id="export-name-form" novalidate>
+          <label class="export-name-field">
+            <span>文件名</span>
+            <div class="export-name-input-wrap">
+              <input class="text-input" id="export-name-input" type="text" maxlength="60"
+                value="${BACKUP_BASENAME}" autocomplete="off" autocapitalize="off"
+                spellcheck="false" enterkeyhint="done" aria-label="备份文件名">
+              <span class="export-name-suffix" aria-hidden="true">.json</span>
+            </div>
+            <small>默认文件名保持不变；如需区分不同备份，可以改成其他名称。</small>
+          </label>
+          <p class="export-name-error" id="export-name-error" role="alert" hidden>请输入文件名</p>
+          <div class="confirm-actions">
+            <button class="confirm-cancel" type="button" data-export-cancel>取消</button>
+            <button class="confirm-ok" type="submit">导出</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(layer);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => layer.classList.add("is-open"));
+    });
+
+    const input = layer.querySelector("#export-name-input");
+    const error = layer.querySelector("#export-name-error");
+    let settled = false;
+    const finish = (fileName) => {
+      if (settled) return;
+      settled = true;
+      activeConfirm = null;
+      layer.classList.remove("is-open");
+      window.setTimeout(() => layer.remove(), 240);
+      if (fileName) exportBackup(fileName);
+    };
+    const cancel = () => finish(null);
+    layer.querySelectorAll("[data-export-cancel]").forEach((button) => {
+      button.addEventListener("click", cancel);
+    });
+    layer.querySelector("#export-name-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const base = normalizeBackupBaseName(input.value);
+      if (!base) {
+        error.hidden = false;
+        input.focus();
+        return;
+      }
+      error.hidden = true;
+      input.blur();
+      finish(`${base}.json`);
+    });
+    input.addEventListener("input", () => {
+      error.hidden = true;
+    });
+    activeConfirm = { close: cancel };
+    if (!window.matchMedia("(pointer: coarse)").matches) {
+      window.setTimeout(() => {
+        input.focus({ preventScroll: true });
+        input.select();
+      }, 180);
+    }
+  }
+
+  async function exportBackup(fileName = BACKUP_FILENAME) {
+    const safeFileName = fileName || BACKUP_FILENAME;
     try {
       const payload = {
         app: "shiguang-memo",
@@ -3083,7 +3288,7 @@
       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
       const file =
         typeof File === "function"
-          ? new File([blob], BACKUP_FILENAME, { type: "application/json" })
+          ? new File([blob], safeFileName, { type: "application/json" })
           : null;
 
       let canShareFile = false;
@@ -3107,7 +3312,10 @@
             files: [file],
             title: "拾光备忘备份",
           });
-          setExportStatus("success", "备份已导出，可在「文件」或「备忘录」中查看。");
+          setExportStatus(
+            "success",
+            `备份已导出：${safeFileName}。可在「文件」或「备忘录」中查看。`
+          );
           showToast("备份已导出", { duration: 4200 });
           return;
         } catch (error) {
@@ -3120,10 +3328,10 @@
         }
       }
 
-      downloadBackup(blob);
+      downloadBackup(blob, safeFileName);
       setExportStatus(
         "success",
-        "备份已生成并开始下载。请在「文件 → 下载」中查看；如果无法保存，请重新打开应用后再试。"
+        `备份已生成并开始下载：${safeFileName}。请在「文件 → 下载」中查看；如果无法保存，请重新打开应用后再试。`
       );
       showToast("备份已开始下载，请到「文件」中查看", { duration: 5000 });
     } catch (error) {

@@ -1,5 +1,5 @@
 /* 拾光备忘 · 离线缓存 */
-const CACHE_VERSION = "shiguang-memo-v1.2.1";
+const CACHE_VERSION = "shiguang-memo-v1.4.0";
 const APP_SHELL = [
   "./",
   "./index.html",
