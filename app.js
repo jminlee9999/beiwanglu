@@ -13,7 +13,7 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.5.0";
+  const APP_VERSION = "1.5.2";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -2141,7 +2141,6 @@
       row.dataset.rowId = String(rowSeq);
       row.innerHTML = `
         <div class="batch-plan-head">
-          <span class="batch-plan-circle" aria-hidden="true"></span>
           <input class="text-input batch-plan-title" type="text" maxlength="120"
             placeholder="想做的事，例如：周末去一趟海边" autocomplete="off" enterkeyhint="done"
             aria-label="计划内容" ${editors.size === 0 ? "data-autofocus" : ""}>
