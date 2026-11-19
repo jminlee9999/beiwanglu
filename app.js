@@ -13,13 +13,16 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.1.1";
+  const APP_VERSION = "1.2.0";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
   const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
   const MAX_MEDIA_DATA_URL = 40_000_000;
   const DATA_VERSION = 2;
+  const BACKUP_FILENAME = "shiguang-backup.json";
+  const INSTALL_PROMPT_KEY = "shiguang-install-prompt-at";
+  const INSTALL_PROMPT_INTERVAL = 3 * 24 * 60 * 60 * 1000;
   const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
   const ROUTES = ["home", "plan", "done", "daily", "favorites"];
 
@@ -132,6 +135,8 @@
   let activeConfirm = null;
   let activeLightbox = null;
   let deferredInstallPrompt = null;
+  let installPromptShownThisSession = false;
+  let installPromptTimer = null;
   let toastTimer = null;
   let toastEl = null;
   let webpSupport = null;
@@ -2793,6 +2798,100 @@
 
   /* ---------------- Data sheet ---------------- */
 
+  function itemMergeTime(item) {
+    const value = item && (item.updatedAt || item.completedAt || item.createdAt);
+    const time = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  function mergeImportedState(current, incoming) {
+    const stats = { added: 0, updated: 0, skipped: 0 };
+    const mergeCollection = (currentItems, incomingItems) => {
+      const map = new Map(currentItems.map((item) => [item.id, item]));
+      incomingItems.forEach((item) => {
+        const existing = map.get(item.id);
+        if (!existing) {
+          map.set(item.id, item);
+          stats.added += 1;
+          return;
+        }
+        if (itemMergeTime(item) > itemMergeTime(existing)) {
+          map.set(item.id, item);
+          stats.updated += 1;
+        } else {
+          stats.skipped += 1;
+        }
+      });
+      return [...map.values()];
+    };
+    const state = {
+      version: DATA_VERSION,
+      plans: mergeCollection(current.plans, incoming.plans),
+      daily: mergeCollection(current.daily, incoming.daily),
+      favorites: mergeCollection(current.favorites, incoming.favorites),
+      updatedAt: nowISO(),
+    };
+    return { state, stats };
+  }
+
+  function showImportChoiceDialog({ currentCount, backupCount }) {
+    return new Promise((resolve) => {
+      const layer = document.createElement("div");
+      layer.className = "confirm-layer import-choice-layer";
+      layer.innerHTML = `
+        <button class="confirm-backdrop" type="button" data-import-cancel aria-label="取消导入"></button>
+        <div class="confirm-card import-choice-card" role="dialog" aria-modal="true" aria-labelledby="import-choice-title">
+          <div class="confirm-icon import-choice-icon" aria-hidden="true">${icon("download")}</div>
+          <h2 class="confirm-title" id="import-choice-title">导入备份</h2>
+          <p class="confirm-text">备份中有 ${backupCount} 条记录，本机现有 ${currentCount} 条。请选择导入方式。</p>
+          <div class="import-choice-list">
+            <button class="import-choice-option" type="button" data-import-mode="merge">
+              <span class="import-choice-icon" aria-hidden="true">${icon("plus")}</span>
+              <span class="import-choice-copy">
+                <strong>合并导入</strong>
+                <span>保留本机，补入备份；同一条取较新版本</span>
+              </span>
+              ${icon("chevronRight", "recent-arrow")}
+            </button>
+            <button class="import-choice-option is-danger" type="button" data-import-mode="overwrite">
+              <span class="import-choice-icon" aria-hidden="true">${icon("rotate")}</span>
+              <span class="import-choice-copy">
+                <strong>覆盖导入</strong>
+                <span>用备份完全替换本机数据</span>
+              </span>
+              ${icon("chevronRight", "recent-arrow")}
+            </button>
+          </div>
+          <button class="cancel-button import-choice-cancel" type="button" data-import-cancel>取消</button>
+        </div>`;
+      document.body.appendChild(layer);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => layer.classList.add("is-open"));
+      });
+
+      let settled = false;
+      const finish = (mode) => {
+        if (settled) return;
+        settled = true;
+        activeConfirm = null;
+        layer.classList.remove("is-open");
+        window.setTimeout(() => layer.remove(), 240);
+        resolve(mode);
+      };
+      layer.querySelectorAll("[data-import-cancel]").forEach((button) => {
+        button.addEventListener("click", () => finish(null));
+      });
+      layer.querySelectorAll("[data-import-mode]").forEach((button) => {
+        button.addEventListener("click", () => finish(button.dataset.importMode));
+      });
+      activeConfirm = { close: () => finish(null) };
+      window.setTimeout(() => {
+        const firstChoice = layer.querySelector("[data-import-mode]");
+        if (firstChoice) firstChoice.focus({ preventScroll: true });
+      }, 160);
+    });
+  }
+
   function openDataSheet() {
     const doneCount = appState.plans.filter((item) => item.completed).length;
     const content = `<div class="sheet-body">
@@ -2812,12 +2911,12 @@
       <div class="data-actions">
         <button class="data-action" type="button" id="export-data">
           <span class="data-action-icon" aria-hidden="true">${icon("download")}</span>
-          <span class="data-action-copy"><strong>导出备份</strong><span>把文字、图片和视频保存为一个 JSON 文件</span></span>
+          <span class="data-action-copy"><strong>导出备份</strong><span>固定文件名 · 可存到「文件」或「备忘录」</span></span>
           ${icon("chevronRight", "recent-arrow")}
         </button>
         <button class="data-action" type="button" id="import-data">
           <span class="data-action-icon" aria-hidden="true">${icon("upload")}</span>
-          <span class="data-action-copy"><strong>导入备份</strong><span>从之前的备份恢复全部记录</span></span>
+          <span class="data-action-copy"><strong>导入备份</strong><span>支持合并导入或覆盖导入</span></span>
           ${icon("chevronRight", "recent-arrow")}
         </button>
         <button class="data-action" type="button" id="install-app">
@@ -2826,6 +2925,8 @@
           ${icon("chevronRight", "recent-arrow")}
         </button>
       </div>
+      <p class="data-tip">导出时会打开系统保存面板，可以选择「存储到文件」或「备忘录」。文件名固定为 <strong>${BACKUP_FILENAME}</strong>，再次导出时请覆盖旧文件。</p>
+      <div class="export-status" id="export-status" role="status" aria-live="polite" hidden></div>
       <p class="data-section-label">管理</p>
       <div class="data-actions">
         <button class="data-action danger" type="button" id="clear-data">
@@ -2897,22 +2998,44 @@
           throw new Error("这不是拾光备忘的备份文件");
         }
         const imported = normalizeState(payload);
-        const accepted = await confirmDialog({
-          title: "导入并覆盖当前数据？",
-          text: `当前 ${totalRecordCount()} 条记录会被备份中的 ${totalRecordCountOf(
-            imported
-          )} 条记录替换。建议先导出当前数据。`,
-          confirmLabel: "导入备份",
-          danger: false,
-          tone: "blue",
+        const backupCount = totalRecordCountOf(imported);
+        if (!backupCount) {
+          throw new Error("这份备份里没有可导入的记录");
+        }
+        const currentCount = totalRecordCount();
+        const mode = await showImportChoiceDialog({
+          currentCount,
+          backupCount,
         });
-        if (!accepted) return;
-        appState = imported;
+        if (!mode) return;
+
+        if (mode === "overwrite") {
+          const accepted = await confirmDialog({
+            title: "确认覆盖当前数据？",
+            text: `备份中的 ${backupCount} 条记录将替换本机的 ${currentCount} 条记录，且无法撤销。建议先导出当前数据。`,
+            confirmLabel: "确认覆盖",
+            danger: true,
+          });
+          if (!accepted) return;
+          appState = imported;
+          persist();
+          closeSheet(true);
+          navigate("home");
+          render();
+          showToast(`覆盖导入完成，共 ${backupCount} 条记录`, { duration: 4200 });
+          return;
+        }
+
+        const merged = mergeImportedState(appState, imported);
+        appState = merged.state;
         persist();
         closeSheet(true);
         navigate("home");
         render();
-        showToast("备份已导入");
+        const { added, updated, skipped } = merged.stats;
+        let message = `合并完成：新增 ${added} 条，更新 ${updated} 条`;
+        if (skipped) message += `，保留本机较新版本 ${skipped} 条`;
+        showToast(message, { duration: 5000 });
       } catch (error) {
         showToast(error.message || "导入失败，请检查备份文件", { duration: 4200 });
       }
@@ -2923,7 +3046,34 @@
     return state.plans.length + state.daily.length + state.favorites.length;
   }
 
-  function exportBackup() {
+  function isAppleMobileDevice() {
+    if (/android/i.test(navigator.userAgent)) return false;
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) return true;
+    return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+
+  function setExportStatus(kind, message) {
+    const status = document.getElementById("export-status");
+    if (!status) return;
+    const iconName =
+      kind === "success" ? "checkCircle" : kind === "error" ? "alert" : "clock";
+    status.className = `export-status is-${kind}`;
+    status.innerHTML = `${icon(iconName)}<span>${escapeHTML(message)}</span>`;
+    status.hidden = false;
+  }
+
+  function downloadBackup(blob) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = BACKUP_FILENAME;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function exportBackup() {
     try {
       const payload = {
         app: "shiguang-memo",
@@ -2933,17 +3083,55 @@
         data: appState,
       };
       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `shiguang-backup-${localDateKey()}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 2000);
-      showToast("备份已导出，请妥善保存");
-    } catch {
-      showToast("导出失败，请稍后再试");
+      const file =
+        typeof File === "function"
+          ? new File([blob], BACKUP_FILENAME, { type: "application/json" })
+          : null;
+
+      let canShareFile = false;
+      if (
+        file &&
+        isAppleMobileDevice() &&
+        typeof navigator.share === "function"
+      ) {
+        try {
+          canShareFile =
+            typeof navigator.canShare === "function" &&
+            navigator.canShare({ files: [file] });
+        } catch {
+          canShareFile = false;
+        }
+      }
+
+      if (canShareFile) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: "拾光备忘备份",
+          });
+          setExportStatus("success", "备份已导出，可在「文件」或「备忘录」中查看。");
+          showToast("备份已导出", { duration: 4200 });
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") {
+            setExportStatus("neutral", "已取消导出。");
+            showToast("已取消导出");
+            return;
+          }
+          console.warn("Web Share failed, falling back to download.", error);
+        }
+      }
+
+      downloadBackup(blob);
+      setExportStatus(
+        "success",
+        "备份已生成并开始下载。请在「文件 → 下载」中查看；如果无法保存，请重新打开应用后再试。"
+      );
+      showToast("备份已开始下载，请到「文件」中查看", { duration: 5000 });
+    } catch (error) {
+      console.warn("Backup export failed:", error);
+      setExportStatus("error", "导出失败，请稍后再试。");
+      showToast("导出失败，请稍后再试", { duration: 4000 });
     }
   }
 
@@ -2965,11 +3153,107 @@
     openInstallHelp();
   }
 
-  function openInstallHelp() {
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const isStandalone =
+  function isAndroidDevice() {
+    return /android/i.test(navigator.userAgent);
+  }
+
+  function isStandaloneMode() {
+    return (
       window.matchMedia("(display-mode: standalone)").matches ||
-      window.navigator.standalone === true;
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.navigator.standalone === true
+    );
+  }
+
+  function shouldOfferInstall() {
+    if (!isAppleMobileDevice() && !isAndroidDevice()) return false;
+    if (isStandaloneMode()) return false;
+    try {
+      const lastPrompt = Number(window.localStorage.getItem(INSTALL_PROMPT_KEY) || 0);
+      if (lastPrompt && Date.now() - lastPrompt < INSTALL_PROMPT_INTERVAL) {
+        return false;
+      }
+    } catch {
+      /* 本地存储不可用时，本次会话只提示一次 */
+    }
+    return true;
+  }
+
+  function markInstallPromptShown() {
+    try {
+      window.localStorage.setItem(INSTALL_PROMPT_KEY, String(Date.now()));
+    } catch {
+      /* noop */
+    }
+  }
+
+  function scheduleInstallPrompt() {
+    if (!shouldOfferInstall()) return;
+    if (installPromptTimer) window.clearTimeout(installPromptTimer);
+    installPromptTimer = window.setTimeout(() => {
+      if (installPromptShownThisSession) return;
+      if (!shouldOfferInstall()) return;
+      if (currentSheet || activeConfirm || activeLightbox) return;
+      if (document.visibilityState !== "visible") return;
+      installPromptShownThisSession = true;
+      markInstallPromptShown();
+      showInstallNudge();
+    }, 2200);
+  }
+
+  function showInstallNudge() {
+    const isIOS = isAppleMobileDevice();
+    const hint = isIOS
+      ? "在 Safari 底部点「分享」，选择「添加到主屏幕」"
+      : "在 Chrome 右上角菜单选择「添加到主屏幕」或「安装应用」";
+    const content = `<div class="sheet-body">
+      <div class="install-nudge-card">
+        <span class="install-nudge-app" aria-hidden="true">${BRAND_MARK}</span>
+        <div class="install-nudge-copy">
+          <strong>拾光备忘</strong>
+          <span>添加到主屏幕，打开更快，也能离线使用。</span>
+        </div>
+      </div>
+      <div class="install-benefits">
+        <div class="install-benefit">
+          <span aria-hidden="true">${icon("sparkles")}</span>
+          <div><strong>免去找网址</strong><span>从桌面图标直接打开</span></div>
+        </div>
+        <div class="install-benefit">
+          <span aria-hidden="true">${icon("lock")}</span>
+          <div><strong>数据仍然只在手机本地</strong><span>不会上传到服务器</span></div>
+        </div>
+        <div class="install-benefit">
+          <span aria-hidden="true">${icon("download")}</span>
+          <div><strong>断网也能打开</strong><span>已缓存的内容离线可查看</span></div>
+        </div>
+      </div>
+      <p class="install-nudge-hint">${escapeHTML(hint)}</p>
+    </div>
+    <div class="sheet-footer">
+      <div class="sheet-footer-row">
+        <button class="secondary-button" id="install-nudge-later" type="button">暂不</button>
+        <button class="primary-button" id="install-nudge-confirm" type="button">去添加</button>
+      </div>
+      <p class="sheet-helper">以后也可以在「数据与备份 → 添加到主屏幕」再次打开</p>
+    </div>`;
+    const sheet = showSheet({
+      kicker: "安装",
+      title: "把拾光放到主屏幕",
+      subtitle: "像 App 一样打开，记录会更顺手。",
+      content,
+    });
+    sheet.sheet
+      .querySelector("#install-nudge-later")
+      .addEventListener("click", () => sheet.close());
+    sheet.sheet
+      .querySelector("#install-nudge-confirm")
+      .addEventListener("click", () => handleInstall());
+  }
+
+  function openInstallHelp() {
+    const isIOS = isAppleMobileDevice();
+    const isStandalone = isStandaloneMode();
     if (isStandalone) {
       showToast("已经添加到主屏幕了");
       return;
@@ -3577,6 +3861,7 @@
     }
     requestPersistentStorage();
     registerServiceWorker();
+    scheduleInstallPrompt();
   }
 
   function requestPersistentStorage() {

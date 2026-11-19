@@ -2981,6 +2981,160 @@ body.lightbox-open .fab {
   color: #cf9598;
 }
 
+.install-nudge-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #eef7ff, #fff9f7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+
+.install-nudge-app {
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
+  padding: 3px;
+  border-radius: 16px;
+  background: linear-gradient(150deg, #82baf1, #eca0a6);
+  box-shadow: 0 10px 20px -10px rgba(87, 132, 176, 0.55);
+}
+
+.install-nudge-app svg {
+  width: 100%;
+  height: 100%;
+}
+
+.install-nudge-copy {
+  min-width: 0;
+}
+
+.install-nudge-copy strong {
+  display: block;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 720;
+}
+
+.install-nudge-copy span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.install-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 5px 14px;
+  border-radius: 17px;
+  background: #f5f6f9;
+}
+
+.install-benefit {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+}
+
+.install-benefit + .install-benefit {
+  border-top: 1px solid var(--line);
+}
+
+.install-benefit > span {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+}
+
+.install-benefit > span svg {
+  width: 15px;
+  height: 15px;
+}
+
+.install-benefit strong {
+  display: block;
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-weight: 650;
+}
+
+.install-benefit div span {
+  display: block;
+  margin-top: 1px;
+  color: var(--ink-3);
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.install-nudge-hint {
+  margin: 11px 3px 0;
+  color: var(--ink-3);
+  text-align: center;
+  font-size: 9.5px;
+  line-height: 1.65;
+}
+
+.data-tip {
+  margin: 11px 4px 0;
+  color: var(--ink-3);
+  font-size: 9.5px;
+  line-height: 1.65;
+}
+
+.data-tip strong {
+  color: var(--ink-2);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.export-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 11px;
+  padding: 11px 12px;
+  border-radius: 13px;
+  background: var(--green-soft);
+  color: #397560;
+  font-size: 10.5px;
+  line-height: 1.65;
+  animation: view-in 0.3s var(--ease-out) both;
+}
+
+.export-status[hidden] {
+  display: none;
+}
+
+.export-status svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  margin-top: 1px;
+}
+
+.export-status.is-neutral {
+  color: var(--ink-2);
+  background: #f0f2f5;
+}
+
+.export-status.is-error {
+  color: #b34e52;
+  background: var(--danger-soft);
+}
+
 .version-line {
   margin: 18px 0 0;
   color: var(--ink-3);
@@ -3309,6 +3463,98 @@ body.lightbox-open .fab {
 
 .confirm-layer[data-tone="blue"] .confirm-ok {
   background: linear-gradient(145deg, #61b3ee, #3a8fdc);
+}
+
+/* ---------- Import choice ---------- */
+
+.import-choice-card {
+  width: min(100%, 368px);
+  text-align: left;
+}
+
+.import-choice-card .confirm-title,
+.import-choice-card .confirm-text {
+  text-align: center;
+}
+
+.import-choice-icon.confirm-icon {
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+}
+
+.import-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.import-choice-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 15px;
+  background: #f5f6f9;
+  text-align: left;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+
+.import-choice-option:active {
+  background: #eef0f4;
+  transform: scale(0.99);
+}
+
+.import-choice-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--blue-deep);
+  background: var(--blue-soft);
+}
+
+.import-choice-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.import-choice-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-choice-copy strong {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 680;
+}
+
+.import-choice-copy span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.import-choice-option.is-danger .import-choice-icon {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.import-choice-option.is-danger .import-choice-copy strong {
+  color: var(--danger);
+}
+
+.import-choice-card .cancel-button {
+  min-height: 44px;
+  margin-top: 9px;
 }
 
 /* ---------- Lightbox ---------- */
