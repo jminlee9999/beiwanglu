@@ -63,7 +63,7 @@
 不要直接双击 `index.html`，否则浏览器会限制 Service Worker 和部分本地存储能力。建议用一个本地静态服务器：
 
 ```bash
-cd 李琼的私人备忘录
+cd 我的私人备忘录
 python3 -m http.server 8080
 ```
 
