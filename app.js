@@ -13,7 +13,7 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.4.0";
+  const APP_VERSION = "1.5.0";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -22,6 +22,7 @@
   const DATA_VERSION = 2;
   const BACKUP_FILENAME = "shiguang-backup.json";
   const BACKUP_BASENAME = "shiguang-backup";
+  const INSTALL_HINT_DISABLED_KEY = "shiguang-install-hint-disabled";
   const CAPACITY_WARNING_BYTES = 80 * 1024 * 1024;
   const CAPACITY_SUGGESTED_BYTES = 100 * 1024 * 1024;
   const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
@@ -1093,6 +1094,11 @@
         <div class="empty-art" aria-hidden="true">${icon("sparkles")}</div>
         <h3>从第一件小事开始</h3>
         <p>写下一个计划，记一段今天，或者收藏那件让你心动很久的东西。</p>
+        ${
+          isStandaloneMode()
+            ? `<p class="migration-note">主屏幕 App 和 Safari 的本地存储是分开的。如果你之前在 Safari 里用过，请先在 Safari 里导出备份，再在这里导入。</p>`
+            : ""
+        }
         <div class="quick-actions">
           <button class="quick-action primary" type="button" data-action="new-plan">${icon(
             "plus"
@@ -1103,6 +1109,13 @@
           <button class="quick-action" type="button" data-action="new-favorite">${icon(
             "heart"
           )}收藏好物</button>
+          ${
+            isStandaloneMode()
+              ? `<button class="quick-action" type="button" data-action="open-data">${icon(
+                  "upload"
+                )}导入旧备份</button>`
+              : ""
+          }
         </div>
       </div>`;
     }
@@ -2995,6 +3008,9 @@
     const capacityData = analyzeLocalData();
     const capacity = getCapacityInfo(capacityData.bytes);
     const capacitySize = formatBytes(capacityData.bytes);
+    const hintDisabled = isInstallHintDisabled();
+    const standalone = isStandaloneMode();
+    const displayMode = currentDisplayMode();
     const content = `<div class="sheet-body">
       <div class="privacy-card">
         <span class="privacy-card-icon" aria-hidden="true">${icon("lock")}</span>
@@ -3042,6 +3058,14 @@
           ${icon("chevronRight", "recent-arrow")}
         </button>
       </div>
+      <div class="install-hint-row">
+        <span>自动提示添加主屏幕：<strong id="install-hint-state">${
+          hintDisabled ? "已关闭" : "已开启"
+        }</strong></span>
+        <button id="install-hint-toggle" type="button">${
+          hintDisabled ? "重新开启" : "关闭"
+        }</button>
+      </div>
       <p class="data-tip">导出时会打开系统保存面板，可以选择「存储到文件」或「备忘录」。默认文件名是 <strong>${BACKUP_FILENAME}</strong>，导出前可以改成其他名字；再次使用同名文件时请覆盖或另存。</p>
       <div class="export-status" id="export-status" role="status" aria-live="polite" hidden></div>
       <p class="data-section-label">管理</p>
@@ -3053,6 +3077,7 @@
         </button>
       </div>
       <p class="version-line">拾光备忘 v${APP_VERSION} · 本地优先</p>
+      <p class="runtime-line">打开方式：${standalone ? "主屏幕 App" : "浏览器"} · ${displayMode}</p>
       <input class="hidden" id="import-file-input" type="file" accept=".json,application/json">
     </div>`;
 
@@ -3071,6 +3096,21 @@
     sheet.sheet
       .querySelector("#install-app")
       .addEventListener("click", () => handleInstall());
+    sheet.sheet.querySelector("#install-hint-toggle").addEventListener("click", () => {
+      const nextDisabled = !isInstallHintDisabled();
+      setInstallHintDisabled(nextDisabled);
+      sheet.sheet.querySelector("#install-hint-state").textContent = nextDisabled
+        ? "已关闭"
+        : "已开启";
+      sheet.sheet.querySelector("#install-hint-toggle").textContent = nextDisabled
+        ? "重新开启"
+        : "关闭";
+      showToast(
+        nextDisabled
+          ? "已关闭自动安装提示，可从「数据与备份」重新开启"
+          : "已重新开启自动安装提示"
+      );
+    });
     sheet.sheet
       .querySelector("#export-data")
       .addEventListener("click", () => openExportBackupDialog());
@@ -3364,16 +3404,46 @@
   }
 
   function isStandaloneMode() {
+    const displayModes = ["standalone", "fullscreen", "minimal-ui", "window-controls-overlay"];
     return (
-      window.matchMedia("(display-mode: standalone)").matches ||
-      window.matchMedia("(display-mode: fullscreen)").matches ||
-      window.navigator.standalone === true
+      displayModes.some((mode) => window.matchMedia(`(display-mode: ${mode})`).matches) ||
+      window.navigator.standalone === true ||
+      window.standalone === true
     );
+  }
+
+  function currentDisplayMode() {
+    const displayModes = ["standalone", "fullscreen", "minimal-ui", "browser"];
+    return (
+      displayModes.find((mode) => window.matchMedia(`(display-mode: ${mode})`).matches) ||
+      "unknown"
+    );
+  }
+
+  function isInstallHintDisabled() {
+    try {
+      return window.localStorage.getItem(INSTALL_HINT_DISABLED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  function setInstallHintDisabled(disabled) {
+    try {
+      if (disabled) {
+        window.localStorage.setItem(INSTALL_HINT_DISABLED_KEY, "1");
+      } else {
+        window.localStorage.removeItem(INSTALL_HINT_DISABLED_KEY);
+      }
+    } catch {
+      /* noop */
+    }
   }
 
   function shouldOfferInstall() {
     if (!isAppleMobileDevice() && !isAndroidDevice()) return false;
     if (isStandaloneMode()) return false;
+    if (isInstallHintDisabled()) return false;
     return true;
   }
 
@@ -3425,6 +3495,7 @@
         <button class="primary-button" id="install-nudge-confirm" type="button">去添加</button>
       </div>
       <p class="sheet-helper">以后也可以在「数据与备份 → 添加到主屏幕」再次打开</p>
+      <button class="install-nudge-optout" id="install-nudge-optout" type="button">已经添加到主屏幕？不再自动提示</button>
     </div>`;
     const sheet = showSheet({
       kicker: "安装",
@@ -3438,6 +3509,14 @@
     sheet.sheet
       .querySelector("#install-nudge-confirm")
       .addEventListener("click", () => handleInstall());
+    sheet.sheet
+      .querySelector("#install-nudge-optout")
+      .addEventListener("click", () => {
+        setInstallHintDisabled(true);
+        installPromptShownThisSession = true;
+        sheet.close();
+        showToast("已关闭自动安装提示，可以从「数据与备份」重新开启");
+      });
   }
 
   function openInstallHelp() {
