@@ -13,7 +13,7 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.2.0";
+  const APP_VERSION = "1.2.1";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -21,8 +21,6 @@
   const MAX_MEDIA_DATA_URL = 40_000_000;
   const DATA_VERSION = 2;
   const BACKUP_FILENAME = "shiguang-backup.json";
-  const INSTALL_PROMPT_KEY = "shiguang-install-prompt-at";
-  const INSTALL_PROMPT_INTERVAL = 3 * 24 * 60 * 60 * 1000;
   const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
   const ROUTES = ["home", "plan", "done", "daily", "favorites"];
 
@@ -3168,23 +3166,7 @@
   function shouldOfferInstall() {
     if (!isAppleMobileDevice() && !isAndroidDevice()) return false;
     if (isStandaloneMode()) return false;
-    try {
-      const lastPrompt = Number(window.localStorage.getItem(INSTALL_PROMPT_KEY) || 0);
-      if (lastPrompt && Date.now() - lastPrompt < INSTALL_PROMPT_INTERVAL) {
-        return false;
-      }
-    } catch {
-      /* 本地存储不可用时，本次会话只提示一次 */
-    }
     return true;
-  }
-
-  function markInstallPromptShown() {
-    try {
-      window.localStorage.setItem(INSTALL_PROMPT_KEY, String(Date.now()));
-    } catch {
-      /* noop */
-    }
   }
 
   function scheduleInstallPrompt() {
@@ -3196,7 +3178,6 @@
       if (currentSheet || activeConfirm || activeLightbox) return;
       if (document.visibilityState !== "visible") return;
       installPromptShownThisSession = true;
-      markInstallPromptShown();
       showInstallNudge();
     }, 2200);
   }
@@ -3204,7 +3185,7 @@
   function showInstallNudge() {
     const isIOS = isAppleMobileDevice();
     const hint = isIOS
-      ? "在 Safari 底部点「分享」，选择「添加到主屏幕」"
+      ? "在 Safari 底部点「共享」，选择「添加到主屏幕」"
       : "在 Chrome 右上角菜单选择「添加到主屏幕」或「安装应用」";
     const content = `<div class="sheet-body">
       <div class="install-nudge-card">
@@ -3260,7 +3241,7 @@
     }
     const steps = isIOS
       ? [
-          "点击 Safari 底部的「分享」按钮",
+          "点击 Safari 底部的「共享」按钮",
           "向下找到「添加到主屏幕」并点击",
           "确认名称后点「添加」，之后从桌面图标打开",
         ]
