@@ -13,7 +13,7 @@
   const DB_STORE = "state";
   const DB_KEY = "app";
   const FALLBACK_KEY = "shiguang-memo:state:v1";
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.1.1";
   const MAX_MEDIA = 6;
   const MAX_VIDEOS = 2;
   const MAX_VIDEO_BYTES = 20 * 1024 * 1024;
@@ -3516,7 +3516,27 @@
     }
   }
 
+  function preventPageZoom() {
+    const preventGesture = (event) => {
+      if (event.cancelable) event.preventDefault();
+    };
+    document.addEventListener("gesturestart", preventGesture, { passive: false });
+    document.addEventListener("gesturechange", preventGesture, { passive: false });
+    document.addEventListener("gestureend", preventGesture, { passive: false });
+    document.addEventListener(
+      "touchmove",
+      (event) => {
+        if (event.touches && event.touches.length > 1 && event.cancelable) {
+          event.preventDefault();
+        }
+      },
+      { passive: false }
+    );
+    document.addEventListener("dblclick", preventGesture, { passive: false });
+  }
+
   function setupEvents() {
+    preventPageZoom();
     document.addEventListener("click", handleDelegatedClick);
     document.addEventListener("keydown", handleKeydown);
 
